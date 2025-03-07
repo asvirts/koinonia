@@ -5,16 +5,18 @@ import { useState } from "react"
 
 export default function PassageSearch(props: {
   search: string
-  loading: boolean
+  questions: number
 }) {
-  return props.loading ? (
-    <div>Loading...</div>
-  ) : (
-    <QuestionGenerator verses={props.search} />
-  )
+  return <QuestionGenerator verses={props.search} questions={props.questions} />
 }
 
-function QuestionGenerator({ verses }: { verses: string }) {
+function QuestionGenerator({
+  verses,
+  questions
+}: {
+  verses: string
+  questions: number
+}) {
   const [result, setResult] = useState("No questions generated yet.")
 
   const openai = new OpenAI({
@@ -22,9 +24,7 @@ function QuestionGenerator({ verses }: { verses: string }) {
     dangerouslyAllowBrowser: true
   })
 
-  const questions = 8
-
-  async function generateQuestions() {
+  async function generateQuestions(verses: string, questions: number) {
     setResult("Generating questions...")
 
     const completion = await openai.chat.completions.create({
@@ -53,7 +53,7 @@ function QuestionGenerator({ verses }: { verses: string }) {
     <div>
       <button
         className="bg-black px-4 py-2 rounded"
-        onClick={generateQuestions}
+        onClick={() => generateQuestions(verses, questions)}
       >
         Generate New Questions
       </button>
