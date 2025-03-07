@@ -8,15 +8,15 @@ export default function Home() {
   const [questions, setQuestions] = useState(8)
 
   return (
-    <main>
-      <h1>Home</h1>
+    <main className="p-8 flex flex-col items-center h-full">
+      <h1 className="text-3xl font-bold mb-4">Home</h1>
       <input
-        className="border"
+        className="border rounded p-2 mr-2"
         type="text"
         onChange={(e) => setSearch(e.target.value)}
       />
       <input
-        className="border"
+        className="border rounded p-2"
         type="number"
         onChange={(e) => setQuestions(parseInt(e.target.value))}
       />
