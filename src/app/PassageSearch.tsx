@@ -1,6 +1,5 @@
 "use client"
 
-import OpenAI from "openai"
 import { useState } from "react"
 
 interface QuestionResponse {
@@ -24,44 +23,31 @@ function QuestionGenerator({
   const [result, setResult] = useState("No questions generated yet.")
   const [data, setData] = useState<Array<string | { question: string }>>([])
 
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    dangerouslyAllowBrowser: true
-  })
-
   async function generateQuestions(verses: string, questions: number) {
     try {
       setResult("Generating questions...")
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a Christian Biblical scholar. Provide a small group discussion guide for the given passages of Scripture. Only reply with the questions in valid JSON format with a 'questions' array."
-          },
-          {
-            role: "user",
-            content: `Create ${questions} small group discussion questions based on ${verses}`
-          }
-        ],
-        response_format: { type: "json_object" }
-      })
+      const response = await fetch('/api/questions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ verses, questions }),
+      });
 
-      if (!completion.choices[0].message.content) {
-        throw new Error("No content received from OpenAI")
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate questions');
       }
 
-      const response = JSON.parse(
-        completion.choices[0].message.content
-      ) as QuestionResponse
-      if (!response.questions || !Array.isArray(response.questions)) {
-        throw new Error("Invalid response format")
+      const data = await response.json();
+      
+      if (!data.questions || !Array.isArray(data.questions)) {
+        throw new Error("Invalid response format");
       }
 
-      setData(response.questions)
-      setResult("Questions generated successfully!")
+      setData(data.questions);
+      setResult("Questions generated successfully!");
     } catch (error) {
       setResult(
         `Error: ${
