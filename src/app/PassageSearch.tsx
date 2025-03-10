@@ -2,10 +2,6 @@
 
 import { useState } from "react"
 
-interface QuestionResponse {
-  questions: Array<string | { question: string }>
-}
-
 export default function PassageSearch(props: {
   search: string
   questions: number
