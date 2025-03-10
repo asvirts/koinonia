@@ -4,7 +4,7 @@ import OpenAI from "openai"
 import { useState } from "react"
 
 interface QuestionResponse {
-  questions: string[]
+  questions: Array<string | { question: string }>
 }
 
 export default function PassageSearch(props: {
@@ -22,7 +22,7 @@ function QuestionGenerator({
   questions: number
 }) {
   const [result, setResult] = useState("No questions generated yet.")
-  const [data, setData] = useState<string[]>([])
+  const [data, setData] = useState<Array<string | { question: string }>>([])
 
   const openai = new OpenAI({
     apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
@@ -72,10 +72,12 @@ function QuestionGenerator({
     }
   }
 
-  function formatQuestions(questions: string[]) {
+  function formatQuestions(questions: Array<string | { question: string }>) {
     return questions.map((question, index) => (
       <li key={index} className="my-4">
-        {question}
+        {typeof question === 'object' && question !== null && 'question' in question
+          ? question.question
+          : question}
       </li>
     ))
   }
@@ -83,14 +85,13 @@ function QuestionGenerator({
   return (
     <div>
       <button
-        className="bg-black px-4 py-2 rounded"
+        className="bg-black text-white hover:bg-gray-800 hover:cursor-pointer px-4 py-2 rounded"
         onClick={() => generateQuestions(verses, questions)}
       >
         Generate New Questions
       </button>
-      <br></br>
-      <ol className="py-4">{data.length > 0 && formatQuestions(data)}</ol>
-      <p>{result}</p>
+      <p className="py-4">{result}</p>
+      <ol className="py-4">{data.length > 0 ? formatQuestions(data) : null}</ol>
     </div>
   )
 }
