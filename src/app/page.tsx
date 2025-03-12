@@ -24,7 +24,7 @@ export default function Home() {
     <main className="p-4 container mx-auto">
       <h1 className="text-3xl font-bold">Koinonia</h1>
       <p className="text-gray-500 mb-4">
-        (κοινωνία) "coin-own-e-uh" | Ancient Greek meaning conveys
+        (κοινωνία) &quot;coin-own-e-uh&quot; | Ancient Greek meaning conveys
         &quot;community,&quot; &quot;partnership,&quot; and &quot;shared
         life&quot;
       </p>
