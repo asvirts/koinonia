@@ -22,7 +22,12 @@ export default function Home() {
 
   return (
     <main className="p-4 container mx-auto">
-      <h1 className="text-3xl font-bold mb-4">Koinonia</h1>
+      <h1 className="text-3xl font-bold">Koinonia</h1>
+      <p className="text-gray-500 mb-4">
+        (κοινωνία) "coin-own-e-uh" | Ancient Greek meaning conveys
+        &quot;community,&quot; &quot;partnership,&quot; and &quot;shared
+        life&quot;
+      </p>
       <h2 className="text-xl mb-4">Small Group Questions Generator</h2>
       <p className="text-gray-500 mb-4">
         Enter a passage of scripture and the number of questions you want to
