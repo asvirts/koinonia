@@ -34,7 +34,7 @@ export default function Home() {
         generate. The questions will be generated based on the passage(s) and
         the number of questions you request.
       </p>
-      <div className="py-4 flex sm:flex-col md:flex-row items-center gap-2">
+      <div className="py-4 flex flex-col lg:flex-row items-center gap-2">
         <div className="flex-grow w-full">
           <label
             htmlFor="topic"
