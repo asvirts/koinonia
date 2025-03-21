@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "o3-mini",
       messages: [
         {
           role: "system",
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
           role: "user",
           content: `Create ${questions} thought-provoking small group discussion questions based on ${verses}${
             topic ? ` and base the questions on the topic ${topic}` : ""
-          }`
+          }. The questions should not be too long or too wordy to avoid confusing the group, but should still have good substance.`
         }
       ],
       response_format: { type: "json_object" }
@@ -46,9 +46,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const response = JSON.parse(
-      completion.choices[0].message.content
-    ) as QuestionResponse
+    let response: QuestionResponse;
+    try {
+      response = JSON.parse(
+        completion.choices[0].message.content
+      ) as QuestionResponse;
+    } catch (parseError) {
+      console.error("JSON parsing error:", parseError);
+      console.error("Raw content:", completion.choices[0].message.content);
+      return NextResponse.json(
+        { error: "Failed to parse OpenAI response as JSON" },
+        { status: 500 }
+      );
+    }
 
     if (!response.questions || !Array.isArray(response.questions)) {
       return NextResponse.json(
