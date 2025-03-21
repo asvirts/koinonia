@@ -22,21 +22,17 @@ export async function POST(request: NextRequest) {
     }
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "o1-mini",
       messages: [
         {
-          role: "system",
-          content:
-            "You are a Christian Biblical scholar. Provide a small group discussion guide for the given passages of Scripture. Only reply with the questions in valid JSON format with a 'questions' array."
-        },
-        {
           role: "user",
-          content: `Create ${questions} thought-provoking small group discussion questions based on ${verses}${
-            topic ? ` and base the questions on the topic ${topic}` : ""
-          }. The questions should not be too long or too wordy to avoid confusing the group, but should still have good substance.`
+          content:
+            'You are a Christian Biblical scholar. Provide a small group discussion guide for the given passages of Scripture. Your response must be ONLY valid JSON with a \'questions\' array containing the discussion questions. The format should be exactly: {"questions": ["question 1", "question 2", ...]}. Do not include any explanations, markdown, or text outside of the JSON structure.\n\n' +
+            `Create ${questions} thought-provoking small group discussion questions based on ${verses}${
+              topic ? ` and base the questions on the topic ${topic}` : ""
+            }. The questions should not be too long or too wordy to avoid confusing the group, but should still have good substance.`
         }
-      ],
-      response_format: { type: "json_object" }
+      ]
     })
 
     if (!completion.choices[0].message.content) {
@@ -46,14 +42,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Clean the response to ensure it's valid JSON
+    let cleanedContent = completion.choices[0].message.content.trim()
+    // If response starts with ``` or ends with ```, remove those markers (common in markdown code blocks)
+    if (cleanedContent.startsWith("```")) {
+      cleanedContent = cleanedContent
+        .replace(/^```(?:json)?/, "")
+        .replace(/```$/, "")
+        .trim()
+    }
+    // If the response has any text before or after the JSON object, try to extract just the JSON part
+    const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      cleanedContent = jsonMatch[0]
+    }
+
     let response: QuestionResponse
     try {
-      response = JSON.parse(
-        completion.choices[0].message.content
-      ) as QuestionResponse
+      response = JSON.parse(cleanedContent) as QuestionResponse
     } catch (parseError) {
       console.error("JSON parsing error:", parseError)
       console.error("Raw content:", completion.choices[0].message.content)
+      console.error("Cleaned content:", cleanedContent)
       return NextResponse.json(
         { error: "Failed to parse OpenAI response as JSON" },
         { status: 500 }
