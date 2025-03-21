@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     const completion = await openai.chat.completions.create({
-      model: "o3-mini",
+      model: "o1-mini",
       messages: [
         {
           role: "system",
@@ -46,18 +46,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    let response: QuestionResponse;
+    let response: QuestionResponse
     try {
       response = JSON.parse(
         completion.choices[0].message.content
-      ) as QuestionResponse;
+      ) as QuestionResponse
     } catch (parseError) {
-      console.error("JSON parsing error:", parseError);
-      console.error("Raw content:", completion.choices[0].message.content);
+      console.error("JSON parsing error:", parseError)
+      console.error("Raw content:", completion.choices[0].message.content)
       return NextResponse.json(
         { error: "Failed to parse OpenAI response as JSON" },
         { status: 500 }
-      );
+      )
     }
 
     if (!response.questions || !Array.isArray(response.questions)) {
