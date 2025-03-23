@@ -141,6 +141,15 @@ ${textContent}`
         }
       }
 
+      // Define the interface for verse range
+      interface VerseRange {
+        book: string
+        chapter: string
+        startVerse: number
+        endVerse: number
+        originalRef: string
+      }
+
       // Sort verses by book, chapter, and verse for easier consolidation
       const sortedVerses = [...uniqueVerses].sort((a, b) => {
         const parseA = parseVerseReference(a)
@@ -166,13 +175,7 @@ ${textContent}`
       })
 
       // Now consolidate consecutive verses
-      let currentRange: {
-        book: string
-        chapter: string
-        startVerse: number
-        endVerse: number
-        originalRef: string
-      } | null = null
+      let currentRange: VerseRange | null = null
 
       sortedVerses.forEach((verse) => {
         const parsed = parseVerseReference(verse)
