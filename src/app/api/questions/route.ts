@@ -31,7 +31,11 @@ export async function POST(request: NextRequest) {
             'You are a Christian Biblical scholar. Provide a small group discussion guide for the given passages of Scripture. Your response must be ONLY valid JSON with a \'questions\' array containing the discussion questions. The format should be exactly: {"questions": ["question 1", "question 2", ...]}. Do not include any explanations, markdown, or text outside of the JSON structure.\n\n' +
             `Create ${questions} thought-provoking small group discussion questions based on ${verses}${
               topic ? ` and base the questions on the topic ${topic}` : ""
-            }. The questions should not be too long or too wordy to avoid confusing the group, but should still have good substance.`
+            }. The questions should not be too long or too wordy to avoid confusing the group, but should still have good substance. These questions should be designed to help the group understand the passage better and apply it to their lives. These questions are for adults that typically have about an hour to discuss. ${
+              topic
+                ? ` The questions should be organized thematically around ${topic}.`
+                : "The questions should follow the chapter chronologically."
+            }`
         }
       ]
     })

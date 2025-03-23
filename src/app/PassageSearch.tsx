@@ -214,21 +214,24 @@ function QuestionGenerator({
             <p className="text-gray-500">No saved question sets found.</p>
           ) : (
             <div className="space-y-8">
-              {savedQuestionSets.map((set) => (
-                <div key={set.id} className="border p-4 rounded-md">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-medium">
-                      {set.verses} {set.topic && `- Topic: ${set.topic}`}
-                    </h3>
-                    <span className="text-sm text-gray-500">
-                      {formatDate(set.timestamp)}
-                    </span>
+              {savedQuestionSets
+                .slice() // Create a copy to avoid mutating the original array
+                .sort((a, b) => b.timestamp - a.timestamp) // Sort by timestamp in descending order
+                .map((set) => (
+                  <div key={set.id} className="border p-4 rounded-md">
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="font-medium">
+                        {set.verses} {set.topic && `- Topic: ${set.topic}`}
+                      </h3>
+                      <span className="text-sm text-gray-500">
+                        {formatDate(set.timestamp)}
+                      </span>
+                    </div>
+                    <ol className="list-decimal pl-6">
+                      {formatQuestions(set.questions)}
+                    </ol>
                   </div>
-                  <ol className="list-decimal pl-6">
-                    {formatQuestions(set.questions)}
-                  </ol>
-                </div>
-              ))}
+                ))}
             </div>
           )}
         </div>
