@@ -201,9 +201,21 @@ function QuestionGenerator({
       {!showSaved ? (
         <>
           <p className="py-4">{result}</p>
-          <ol className="py-4">
-            {data.length > 0 ? formatQuestions(data) : null}
-          </ol>
+          {data.length > 0 ? (
+            <div className="border p-4 rounded-md">
+              <div className="flex justify-between items-center mb-2">
+                {topic ? (
+                  <div>
+                    <h3 className="font-bold text-lg">{topic}</h3>
+                    <p className="text-gray-500">{verses}</p>
+                  </div>
+                ) : (
+                  <h3 className="font-bold text-lg">{verses}</h3>
+                )}
+              </div>
+              <ol className="list-decimal pl-6">{formatQuestions(data)}</ol>
+            </div>
+          ) : null}
         </>
       ) : (
         <div className="mt-4">
@@ -221,10 +233,10 @@ function QuestionGenerator({
                   <div key={set.id} className="border p-4 rounded-md">
                     <div className="flex justify-between items-center mb-2">
                       {set.topic ? (
-                        <>
+                        <div>
                           <h3 className="font-bold text-lg">{set.topic}</h3>
                           <p className="text-gray-500">{set.verses}</p>
-                        </>
+                        </div>
                       ) : (
                         <h3 className="font-bold text-lg">{set.verses}</h3>
                       )}
