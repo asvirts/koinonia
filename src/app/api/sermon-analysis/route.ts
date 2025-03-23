@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     // Use OpenAI to analyze the sermon outline
     const completion = await openai.chat.completions.create({
-      model: "o1-mini",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "user",
