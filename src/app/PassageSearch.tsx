@@ -42,6 +42,7 @@ function QuestionGenerator({
   const [showSaved, setShowSaved] = useState(false)
   const [isClient, setIsClient] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [expandedCards, setExpandedCards] = useState<string[]>([])
 
   // Set isClient to true once the component mounts
   useEffect(() => {
@@ -142,6 +143,12 @@ function QuestionGenerator({
     return new Date(timestamp).toLocaleString()
   }
 
+  function toggleCardExpansion(id: string) {
+    setExpandedCards((prev) =>
+      prev.includes(id) ? prev.filter((cardId) => cardId !== id) : [...prev, id]
+    )
+  }
+
   return (
     <div>
       <div className="flex gap-2 mb-6">
@@ -230,8 +237,13 @@ function QuestionGenerator({
                 .slice() // Create a copy to avoid mutating the original array
                 .sort((a, b) => b.timestamp - a.timestamp) // Sort by timestamp in descending order
                 .map((set) => (
-                  <div key={set.id} className="border p-4 rounded-md">
-                    <div className="flex justify-between items-center mb-2">
+                  <div
+                    key={set.id}
+                    className="border p-4 rounded-md cursor-pointer hover:bg-gray-50 transition-colors shadow-sm hover:shadow relative"
+                    onClick={() => toggleCardExpansion(set.id)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <div className="flex justify-between items-center">
                       {set.topic ? (
                         <div>
                           <h3 className="font-bold text-lg">{set.topic}</h3>
@@ -240,13 +252,35 @@ function QuestionGenerator({
                       ) : (
                         <h3 className="font-bold text-lg">{set.verses}</h3>
                       )}
-                      <span className="text-sm text-gray-500">
-                        {formatDate(set.timestamp)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-500">
+                          {formatDate(set.timestamp)}
+                        </span>
+                        <svg
+                          className={`w-5 h-5 transition-transform text-indigo-600 ${
+                            expandedCards.includes(set.id) ? "rotate-180" : ""
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </div>
                     </div>
-                    <ol className="list-decimal pl-6">
-                      {formatQuestions(set.questions)}
-                    </ol>
+                    {expandedCards.includes(set.id) && (
+                      <div className="mt-4 pt-4 border-t">
+                        <ol className="list-decimal pl-6">
+                          {formatQuestions(set.questions)}
+                        </ol>
+                      </div>
+                    )}
                   </div>
                 ))}
             </div>
