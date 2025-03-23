@@ -24,18 +24,18 @@ export async function POST(request: NextRequest) {
     const message = await anthropic.messages.create({
       model: "claude-3-7-sonnet-20250219",
       max_tokens: 1024,
+      system:
+        "You are a Christian Biblical scholar creating small group discussion guides. Return only valid JSON with a 'questions' array.",
       messages: [
         {
           role: "user",
-          content:
-            'You are a Christian Biblical scholar. Provide a small group discussion guide for the given passages of Scripture. Your response must be ONLY valid JSON with a \'questions\' array containing the discussion questions. The format should be exactly: {"questions": ["question 1", "question 2", ...]}. Do not include any explanations, markdown, or text outside of the JSON structure.\n\n' +
-            `Create ${questions} thought-provoking small group discussion questions based on ${verses}${
-              topic ? ` and base the questions on the topic ${topic}` : ""
-            }. The questions should not be too long or too wordy to avoid confusing the group, but should still have good substance. These questions should be designed to help the group understand the passage better and apply it to their lives. These questions are for adults that typically have about an hour to discuss. ${
-              topic
-                ? ` The questions should be organized thematically around ${topic}.`
-                : "The questions should follow the chapter chronologically."
-            }`
+          content: `Create ${questions} discussion questions for ${verses}${
+            topic ? ` on the topic of ${topic}` : ""
+          }. Questions should be substantial but concise, helping adults understand and apply the passage in a one-hour discussion. Format: {"questions": ["question 1", "question 2", ...]}${
+            topic
+              ? " Organize thematically."
+              : " Follow chapter chronologically."
+          }`
         }
       ]
     })
