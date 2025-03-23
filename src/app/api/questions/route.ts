@@ -1,9 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk"
+import OpenAI from "openai"
 import { NextRequest, NextResponse } from "next/server"
 
-// Initialize Anthropic client on the server side
-const anthropic = new Anthropic({
-  apiKey: process.env.CLAUDE_API_KEY
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 })
 
 interface QuestionResponse {
@@ -21,15 +21,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const message = await anthropic.messages.create({
-      model: "claude-3-7-sonnet-20250219",
-      max_tokens: 1024,
-      system:
-        "You are a Christian Biblical scholar creating small group discussion guides. Return only valid JSON with a 'questions' array.",
+    const completion = await openai.chat.completions.create({
+      model: "o1-mini",
       messages: [
         {
           role: "user",
-          content: `Create ${questions} discussion questions for ${verses}${
+          content: `You are a Christian Biblical scholar creating small group discussion guides. Return only valid JSON with a 'questions' array.
+
+Create ${questions} discussion questions for ${verses}${
             topic ? ` on the topic of ${topic}` : ""
           }. Questions should be substantial but concise, helping adults understand and apply the passage in a one-hour discussion. Format: {"questions": ["question 1", "question 2", ...]}${
             topic
@@ -40,17 +39,17 @@ export async function POST(request: NextRequest) {
       ]
     })
 
-    // Get the content from the first block, ensuring it's a text block
-    const textContent = message.content.find((block) => block.type === "text")
-    if (!textContent || textContent.type !== "text") {
+    // Get the content from the response
+    const textContent = completion.choices[0]?.message?.content
+    if (!textContent) {
       return NextResponse.json(
-        { error: "No text content received from Claude" },
+        { error: "No content received from OpenAI" },
         { status: 500 }
       )
     }
 
     // Clean the response to ensure it's valid JSON
-    let cleanedContent = textContent.text.trim()
+    let cleanedContent = textContent.trim()
     // If response starts with ``` or ends with ```, remove those markers (common in markdown code blocks)
     if (cleanedContent.startsWith("```")) {
       cleanedContent = cleanedContent
@@ -69,10 +68,10 @@ export async function POST(request: NextRequest) {
       response = JSON.parse(cleanedContent) as QuestionResponse
     } catch (parseError) {
       console.error("JSON parsing error:", parseError)
-      console.error("Raw content:", textContent.text)
+      console.error("Raw content:", textContent)
       console.error("Cleaned content:", cleanedContent)
       return NextResponse.json(
-        { error: "Failed to parse Claude response as JSON" },
+        { error: "Failed to parse OpenAI response as JSON" },
         { status: 500 }
       )
     }
