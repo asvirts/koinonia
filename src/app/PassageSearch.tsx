@@ -220,7 +220,7 @@ function QuestionGenerator({
                 .map((set) => (
                   <div key={set.id} className="border p-4 rounded-md">
                     <div className="flex justify-between items-center mb-2">
-                      <h3 className="font-medium">
+                      <h3 className="font-bold text-lg">
                         {set.verses} {set.topic && `- Topic: ${set.topic}`}
                       </h3>
                       <span className="text-sm text-gray-500">

@@ -249,7 +249,7 @@ export default function SermonOutlineUpload({
               </div>
 
               <div>
-                <h4 className="font-medium">Suggested Bible Verses:</h4>
+                <h4 className="font-bold text-lg">Suggested Bible Verses:</h4>
                 {result.verses.length > 0 ? (
                   <ul className="mt-1 space-y-1 list-disc pl-5">
                     {result.verses.map((verse, index) => (
