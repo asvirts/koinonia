@@ -1,9 +1,9 @@
-import OpenAI from "openai"
+import Anthropic from "@anthropic-ai/sdk"
 import { NextRequest, NextResponse } from "next/server"
 
-// Initialize OpenAI client on the server side
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+// Initialize Anthropic client on the server side
+const anthropic = new Anthropic({
+  apiKey: process.env.CLAUDE_API_KEY
 })
 
 interface QuestionResponse {
@@ -21,8 +21,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const completion = await openai.chat.completions.create({
-      model: "o1-mini",
+    const message = await anthropic.messages.create({
+      model: "claude-3-7-sonnet-20250219",
+      max_tokens: 1024,
       messages: [
         {
           role: "user",
@@ -35,15 +36,17 @@ export async function POST(request: NextRequest) {
       ]
     })
 
-    if (!completion.choices[0].message.content) {
+    // Get the content from the first block, ensuring it's a text block
+    const textContent = message.content.find((block) => block.type === "text")
+    if (!textContent || textContent.type !== "text") {
       return NextResponse.json(
-        { error: "No content received from OpenAI" },
+        { error: "No text content received from Claude" },
         { status: 500 }
       )
     }
 
     // Clean the response to ensure it's valid JSON
-    let cleanedContent = completion.choices[0].message.content.trim()
+    let cleanedContent = textContent.text.trim()
     // If response starts with ``` or ends with ```, remove those markers (common in markdown code blocks)
     if (cleanedContent.startsWith("```")) {
       cleanedContent = cleanedContent
@@ -62,10 +65,10 @@ export async function POST(request: NextRequest) {
       response = JSON.parse(cleanedContent) as QuestionResponse
     } catch (parseError) {
       console.error("JSON parsing error:", parseError)
-      console.error("Raw content:", completion.choices[0].message.content)
+      console.error("Raw content:", textContent.text)
       console.error("Cleaned content:", cleanedContent)
       return NextResponse.json(
-        { error: "Failed to parse OpenAI response as JSON" },
+        { error: "Failed to parse Claude response as JSON" },
         { status: 500 }
       )
     }
