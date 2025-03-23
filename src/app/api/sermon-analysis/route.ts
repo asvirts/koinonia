@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     // Use Claude to analyze the sermon outline
     const message = await anthropic.messages.create({
-      model: "claude-3-7-sonnet-20250219",
+      model: "claude-3-5-haiku-20240307",
       max_tokens: 1024,
       system:
         "You are a Christian Biblical scholar. Analyze sermons and output only JSON with mainTopic and verses fields.",
