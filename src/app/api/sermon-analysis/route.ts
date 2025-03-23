@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
     // Use OpenAI to analyze the sermon outline
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
+      response_format: { type: "json_object" },
       messages: [
         {
           role: "user",
@@ -65,20 +66,24 @@ Critical instructions for verse extraction:
 - Include ALL verses, whether fully cited (John 3:16), partially referenced (John 3), or just implied
 - Capture references in ANY format: Book Chapter:Verse, Book Chapter:Verse-Verse, Book Chapter
 - Don't miss abbreviated book names (Gen, Exo, Matt, Eph, etc.) - check for all standard abbreviations
-- If a range of verses is mentioned (e.g., Romans 8:1-8), include each individual verse (Romans 8:1, Romans 8:2, etc.)
+- If a range of verses is mentioned (e.g., Romans 8:1-8), include the range as one entry (like "Romans 8:1-8")
 - If in doubt about whether something is a verse reference, INCLUDE IT
 - Carefully examine the entire document including section headings, notes, and any marginalia
 - Do not filter or exclude any verse references for any reason
 
-RESPOND USING EXACTLY THIS FORMAT:
-TOPIC: [main sermon topic]
-VERSES:
-[verse1]
-[verse2]
-[verse3]
-...etc.
+You MUST respond with a valid JSON object that contains EXACTLY these fields:
+- topic: the main sermon topic as a short phrase (3-5 words)
+- verses: an array of strings, each string being a Bible verse reference
 
-Do not include ANY additional text, explanations, or formatting.
+Example response format:
+{
+  "topic": "God's Love and Grace",
+  "verses": [
+    "John 3:16",
+    "Romans 5:8",
+    "Ephesians 2:8-9"
+  ]
+}
 
 Sermon outline:
 ${textContent}`
@@ -97,25 +102,12 @@ ${textContent}`
     const responseContent = completion.choices[0].message.content.trim()
 
     try {
-      // Parse the response in our custom format
-      const lines = responseContent.split("\n")
+      // Parse the JSON response
+      const parsedResponse = JSON.parse(responseContent)
 
-      // Extract main topic
-      let mainTopic = ""
-      const verses: string[] = []
-      let collectingVerses = false
-
-      for (const line of lines) {
-        const trimmedLine = line.trim()
-
-        if (trimmedLine.startsWith("TOPIC:")) {
-          mainTopic = trimmedLine.substring("TOPIC:".length).trim()
-        } else if (trimmedLine === "VERSES:") {
-          collectingVerses = true
-        } else if (collectingVerses && trimmedLine) {
-          verses.push(trimmedLine)
-        }
-      }
+      // Extract main topic and verses from the JSON
+      const mainTopic = parsedResponse.topic
+      const verses = parsedResponse.verses || []
 
       // Validate that we got the required data
       if (!mainTopic || verses.length === 0) {
