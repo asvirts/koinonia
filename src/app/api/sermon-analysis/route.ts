@@ -6,6 +6,22 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 })
 
+// Define the interface for verse range
+interface VerseRange {
+  book: string
+  chapter: string
+  startVerse: number
+  endVerse: number
+  originalRef: string
+}
+
+// Helper interface for parsed verse references
+interface ParsedVerseReference {
+  book: string
+  chapter: string
+  verse: number
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
@@ -127,9 +143,7 @@ ${textContent}`
       const consolidatedVerses: string[] = []
 
       // Helper function to parse verse references
-      function parseVerseReference(
-        ref: string
-      ): { book: string; chapter: string; verse: number } | null {
+      function parseVerseReference(ref: string): ParsedVerseReference | null {
         // Match patterns like "Book Chapter:Verse" (e.g., "John 3:16")
         const match = ref.match(/^([\w\s]+)\s+(\d+):(\d+)$/i)
         if (!match) return null
@@ -139,15 +153,6 @@ ${textContent}`
           chapter: match[2],
           verse: parseInt(match[3], 10)
         }
-      }
-
-      // Define the interface for verse range
-      interface VerseRange {
-        book: string
-        chapter: string
-        startVerse: number
-        endVerse: number
-        originalRef: string
       }
 
       // Sort verses by book, chapter, and verse for easier consolidation
@@ -184,10 +189,11 @@ ${textContent}`
         if (!parsed) {
           if (currentRange) {
             // Add the previous range before adding this unparseable reference
+            const typedRange = currentRange as VerseRange
             const rangeText =
-              currentRange.startVerse === currentRange.endVerse
-                ? currentRange.originalRef
-                : `${currentRange.book} ${currentRange.chapter}:${currentRange.startVerse}-${currentRange.endVerse}`
+              typedRange.startVerse === typedRange.endVerse
+                ? typedRange.originalRef
+                : `${typedRange.book} ${typedRange.chapter}:${typedRange.startVerse}-${typedRange.endVerse}`
             consolidatedVerses.push(rangeText)
             currentRange = null
           }
@@ -198,16 +204,18 @@ ${textContent}`
         // If no current range or different book/chapter, start a new range
         if (
           !currentRange ||
-          currentRange.book.toLowerCase() !== parsed.book.toLowerCase() ||
-          currentRange.chapter !== parsed.chapter ||
-          parsed.verse !== currentRange.endVerse + 1
+          (currentRange as VerseRange).book.toLowerCase() !==
+            parsed.book.toLowerCase() ||
+          (currentRange as VerseRange).chapter !== parsed.chapter ||
+          parsed.verse !== (currentRange as VerseRange).endVerse + 1
         ) {
           // Add the previous range if it exists
           if (currentRange) {
+            const typedRange = currentRange as VerseRange
             const rangeText =
-              currentRange.startVerse === currentRange.endVerse
-                ? currentRange.originalRef
-                : `${currentRange.book} ${currentRange.chapter}:${currentRange.startVerse}-${currentRange.endVerse}`
+              typedRange.startVerse === typedRange.endVerse
+                ? typedRange.originalRef
+                : `${typedRange.book} ${typedRange.chapter}:${typedRange.startVerse}-${typedRange.endVerse}`
             consolidatedVerses.push(rangeText)
           }
 
@@ -227,10 +235,11 @@ ${textContent}`
 
       // Add the last range if it exists
       if (currentRange) {
+        const typedRange = currentRange as VerseRange
         const rangeText =
-          currentRange.startVerse === currentRange.endVerse
-            ? currentRange.originalRef
-            : `${currentRange.book} ${currentRange.chapter}:${currentRange.startVerse}-${currentRange.endVerse}`
+          typedRange.startVerse === typedRange.endVerse
+            ? typedRange.originalRef
+            : `${typedRange.book} ${typedRange.chapter}:${typedRange.startVerse}-${typedRange.endVerse}`
         consolidatedVerses.push(rangeText)
       }
 
