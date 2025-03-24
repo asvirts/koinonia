@@ -78,16 +78,23 @@ async function generateQuestionsForChunk(
         model: "o1-mini",
         messages: [
           {
+            role: "system",
+            content:
+              "You are a JSON-only response API. You must ONLY return valid JSON objects with no additional text, markdown formatting, or explanations. The response must be parseable by JSON.parse()."
+          },
+          {
             role: "user",
-            content: `You are a Christian Biblical scholar creating small group discussion guides. Return only valid JSON with a 'questions' array.
+            content: `Return a JSON object with exactly this structure: {"questions": ["question1", "question2", ...]}
 
-Create ${questions} discussion questions for ${sanitizedVerses}${
+Create ${questions} Christian adult small group discussion questions for ${sanitizedVerses}${
               sanitizedTopic ? ` on the topic of ${sanitizedTopic}` : ""
-            }. Questions should be substantial but concise, helping adults understand and apply the passage in a one-hour discussion. Try to create questions that are not too obvious, not too similar to each other, that are not too easy to answer. Aim to create at least one question per Bible verse if possible. If there are more verses than the total number of questions the user asked for, see if you can combine some verses into a single question so all of the verses are included in the discussion guide, but don't force it if it doesn't make sense. Format: {"questions": ["question 1", "question 2", ...]}${
+            }. Questions should be substantial but concise, helping adults understand and apply the passage in a one-hour discussion. Try to create questions that are not too obvious, not too similar to each other, that are not too easy to answer. Aim to create at least one question per Bible verse if possible. If there are more verses than the total number of questions the user asked for, see if you can combine some verses into a single question so all of the verses are included in the discussion guide, but don't force it if it doesn't make sense.${
               sanitizedTopic
                 ? " Organize thematically."
                 : " Follow chapter chronologically."
-            }`
+            }
+
+IMPORTANT: Return ONLY the JSON object with no additional text, markdown formatting, or explanations.`
           }
         ]
       })
