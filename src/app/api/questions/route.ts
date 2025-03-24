@@ -23,6 +23,18 @@ interface QuestionResponse {
   questions: Array<string | { question: string }>
 }
 
+interface OpenAIErrorResponse {
+  response?: {
+    data?: {
+      error?: {
+        message?: string
+        type?: string
+        code?: string
+      }
+    }
+  }
+}
+
 // Sanitize input to prevent prompt injection attacks
 function sanitizeInput(input: string): string {
   // Remove potentially dangerous characters and limit length
@@ -147,7 +159,10 @@ Create ${questions} discussion questions for ${sanitizedVerses}${
       console.error("Error details:", error.message)
       console.error("Error stack:", error.stack)
       if ("response" in error) {
-        console.error("API Error response:", (error as any).response?.data)
+        console.error(
+          "API Error response:",
+          (error as OpenAIErrorResponse).response?.data
+        )
       }
     }
     return { questions: [] }
