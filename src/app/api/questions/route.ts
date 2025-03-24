@@ -77,8 +77,7 @@ Create ${questions} discussion questions for ${sanitizedVerses}${
                 : " Follow chapter chronologically."
             }`
           }
-        ],
-        temperature: 0.7
+        ]
       })
       .catch((error) => {
         console.error("OpenAI API error:", error)
