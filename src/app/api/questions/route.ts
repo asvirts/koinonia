@@ -96,8 +96,7 @@ Create ${questions} discussion questions for these Bible verses: ${sanitizedVers
 
 IMPORTANT: Return ONLY the JSON object with no additional text, markdown formatting, or explanations.`
           }
-        ],
-        max_completion_tokens: 1000
+        ]
       })
       .catch((error) => {
         console.error("OpenAI API error:", error)
