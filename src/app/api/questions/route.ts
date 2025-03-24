@@ -57,13 +57,19 @@ function chunkArray<T>(array: T[], size: number): T[][] {
 async function generateQuestionsForChunk(
   verses: string,
   questions: number,
-  topic?: string
+  topic?: string,
+  retryCount = 0
 ): Promise<QuestionResponse> {
   const sanitizedVerses = sanitizeInput(verses)
   const sanitizedTopic = topic ? sanitizeInput(topic) : ""
 
   try {
-    console.log("Attempting to generate questions for verses:", sanitizedVerses)
+    console.log(
+      `Attempting to generate questions for verses (attempt ${
+        retryCount + 1
+      }):`,
+      sanitizedVerses
+    )
     console.log("Using topic:", sanitizedTopic)
     console.log("Number of questions requested:", questions)
 
@@ -78,13 +84,10 @@ async function generateQuestionsForChunk(
         model: "o1-mini",
         messages: [
           {
-            role: "system",
-            content:
-              "You are a JSON-only response API. You must ONLY return valid JSON objects with no additional text, markdown formatting, or explanations. The response must be parseable by JSON.parse()."
-          },
-          {
             role: "user",
-            content: `Return a JSON object with exactly this structure: {"questions": ["question1", "question2", ...]}
+            content: `You are a JSON-only response API. You must ONLY return valid JSON objects with no additional text, markdown formatting, or explanations. The response must be parseable by JSON.parse(). Never include any text before or after the JSON object.
+
+Return a JSON object with exactly this structure: {"questions": ["question1", "question2", ...]}
 
 Create ${questions} discussion questions for these Bible verses: ${sanitizedVerses}${
               sanitizedTopic ? ` on the topic of ${sanitizedTopic}` : ""
@@ -94,15 +97,29 @@ Create ${questions} discussion questions for these Bible verses: ${sanitizedVers
                 : " Follow chapter chronologically."
             }
 
-IMPORTANT: Return ONLY the JSON object with no additional text, markdown formatting, or explanations.`
+CRITICAL: Return ONLY the JSON object. Do not include any text before or after the JSON object. Do not use markdown formatting. The response must be a valid JSON object that can be parsed by JSON.parse().`
           }
         ]
       })
       .catch((error) => {
-        console.error("OpenAI API error:", error)
+        console.error("OpenAI API error details:", {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+          cause: error.cause,
+          response: error.response,
+          status: error.status,
+          statusText: error.statusText
+        })
+
         if (error.response) {
-          console.error("OpenAI API error response:", error.response.data)
-          // Log the specific error message from OpenAI
+          console.error("OpenAI API error response:", {
+            status: error.response.status,
+            statusText: error.response.statusText,
+            data: error.response.data,
+            headers: error.response.headers
+          })
+
           if (error.response.data?.error?.message) {
             console.error(
               "OpenAI error message:",
@@ -110,8 +127,53 @@ IMPORTANT: Return ONLY the JSON object with no additional text, markdown formatt
             )
           }
         }
+
+        // Check for network errors
+        if (error.name === "FetchError" || error.message.includes("fetch")) {
+          console.error("Network error detected. Possible causes:", {
+            apiKey: process.env.OPENAI_API_KEY ? "Present" : "Missing",
+            network: "Check network connectivity",
+            timeout: "Request might have timed out"
+          })
+        }
+
         throw error
       })
+
+    // Add response validation
+    if (!completion) {
+      console.error("No completion received from OpenAI API")
+      if (retryCount < 2) {
+        console.log(
+          `Retrying chunk due to no completion (attempt ${retryCount + 2})...`
+        )
+        return generateQuestionsForChunk(
+          verses,
+          questions,
+          topic,
+          retryCount + 1
+        )
+      }
+      return { questions: [] }
+    }
+
+    if (!completion.choices || !Array.isArray(completion.choices)) {
+      console.error("Invalid completion format:", completion)
+      if (retryCount < 2) {
+        console.log(
+          `Retrying chunk due to invalid completion format (attempt ${
+            retryCount + 2
+          })...`
+        )
+        return generateQuestionsForChunk(
+          verses,
+          questions,
+          topic,
+          retryCount + 1
+        )
+      }
+      return { questions: [] }
+    }
 
     const textContent = completion.choices[0]?.message?.content
     if (!textContent) {
@@ -119,6 +181,15 @@ IMPORTANT: Return ONLY the JSON object with no additional text, markdown formatt
         "No content received from OpenAI for verses:",
         sanitizedVerses
       )
+      if (retryCount < 2) {
+        console.log(`Retrying chunk (attempt ${retryCount + 2})...`)
+        return generateQuestionsForChunk(
+          verses,
+          questions,
+          topic,
+          retryCount + 1
+        )
+      }
       return { questions: [] }
     }
 
@@ -143,6 +214,19 @@ IMPORTANT: Return ONLY the JSON object with no additional text, markdown formatt
       if (!response.questions || !Array.isArray(response.questions)) {
         console.error("Invalid response format for verses:", sanitizedVerses)
         console.error("Response:", response)
+        if (retryCount < 2) {
+          console.log(
+            `Retrying chunk due to invalid format (attempt ${
+              retryCount + 2
+            })...`
+          )
+          return generateQuestionsForChunk(
+            verses,
+            questions,
+            topic,
+            retryCount + 1
+          )
+        }
         return { questions: [] }
       }
       console.log("Successfully parsed questions:", response.questions)
@@ -154,6 +238,17 @@ IMPORTANT: Return ONLY the JSON object with no additional text, markdown formatt
         parseError
       )
       console.error("Raw content that failed to parse:", cleanedContent)
+      if (retryCount < 2) {
+        console.log(
+          `Retrying chunk due to parse error (attempt ${retryCount + 2})...`
+        )
+        return generateQuestionsForChunk(
+          verses,
+          questions,
+          topic,
+          retryCount + 1
+        )
+      }
       return { questions: [] }
     }
   } catch (error) {
@@ -171,6 +266,10 @@ IMPORTANT: Return ONLY the JSON object with no additional text, markdown formatt
           (error as OpenAIErrorResponse).response?.data
         )
       }
+    }
+    if (retryCount < 2) {
+      console.log(`Retrying chunk due to error (attempt ${retryCount + 2})...`)
+      return generateQuestionsForChunk(verses, questions, topic, retryCount + 1)
     }
     return { questions: [] }
   }
@@ -242,11 +341,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Split verses into chunks of 3 (reduced from 5 to handle complexity better)
+    // Split verses into chunks of 2 (reduced further to handle complexity better)
     const verseArray = verses.split(",").map((v) => v.trim())
     console.log(`Processing ${verseArray.length} verses in chunks`)
 
-    const verseChunks = chunkArray(verseArray, 3)
+    const verseChunks = chunkArray(verseArray, 2)
 
     // Calculate questions per chunk (round up to ensure we get enough questions)
     const questionsPerChunk = Math.ceil(questions / verseChunks.length)
@@ -286,7 +385,7 @@ export async function POST(request: NextRequest) {
       console.log(
         "No questions generated from chunks, trying with a smaller subset"
       )
-      const subsetVerses = verseArray.slice(0, 5).join(", ") // Try with just first 5 verses
+      const subsetVerses = verseArray.slice(0, 3).join(", ") // Try with just first 3 verses
       const fullResponse = await generateQuestionsForChunk(
         subsetVerses,
         questions,
