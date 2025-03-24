@@ -75,6 +75,16 @@ export default function SermonOutlineUpload({
       return
     }
 
+    // Check file extension as an additional security layer
+    const fileExtension = file.name.split(".").pop()?.toLowerCase()
+    const allowedExtensions = ["txt", "pdf", "doc", "docx"]
+    if (!fileExtension || !allowedExtensions.includes(fileExtension)) {
+      setError(
+        "Invalid file format. Please upload a .txt, .pdf, .doc, or .docx file"
+      )
+      return
+    }
+
     // Check file size (max 5MB)
     const maxSize = 5 * 1024 * 1024 // 5MB
     if (file.size > maxSize) {

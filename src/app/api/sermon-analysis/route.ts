@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import OpenAI from "openai"
 
+// Rate limiting - simple in-memory store
+// In production, use a proper rate limiting solution with Redis
+const RATE_LIMIT_DURATION = 60 * 1000 // 1 minute in milliseconds
+const MAX_REQUESTS = 5 // 5 requests per minute
+
+interface RateLimitEntry {
+  count: number
+  startTime: number
+}
+
+// Rate limit cache - should be replaced with Redis in production
+const rateLimitCache = new Map<string, RateLimitEntry>()
+
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -24,11 +37,74 @@ interface ParsedVerseReference {
 
 export async function POST(request: NextRequest) {
   try {
+    // Get IP for rate limiting (in production, get this from headers)
+    const ip = request.headers.get("x-forwarded-for") || "unknown"
+
+    // Rate limiting check
+    const now = Date.now()
+    const rateLimit = rateLimitCache.get(ip)
+
+    if (rateLimit) {
+      // Reset rate limit if duration has passed
+      if (now - rateLimit.startTime > RATE_LIMIT_DURATION) {
+        rateLimitCache.set(ip, { count: 1, startTime: now })
+      } else if (rateLimit.count >= MAX_REQUESTS) {
+        return NextResponse.json(
+          { error: "Too many requests. Please try again later." },
+          { status: 429 }
+        )
+      } else {
+        // Increment the request count
+        rateLimitCache.set(ip, {
+          count: rateLimit.count + 1,
+          startTime: rateLimit.startTime
+        })
+      }
+    } else {
+      // First request from this IP
+      rateLimitCache.set(ip, { count: 1, startTime: now })
+    }
+
+    // Content-type validation
+    const contentType = request.headers.get("content-type") || ""
+    if (!contentType.includes("multipart/form-data")) {
+      return NextResponse.json(
+        { error: "Invalid content type. Expected multipart/form-data." },
+        { status: 400 }
+      )
+    }
+
     const formData = await request.formData()
     const file = formData.get("file") as File | null
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
+    }
+
+    // Validate file type
+    const allowedTypes = [
+      "text/plain",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ]
+
+    if (!allowedTypes.includes(file.type)) {
+      return NextResponse.json(
+        {
+          error: "Invalid file type. Only text and document files are allowed."
+        },
+        { status: 400 }
+      )
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024 // 5MB
+    if (file.size > maxSize) {
+      return NextResponse.json(
+        { error: "File too large. Maximum size is 5MB." },
+        { status: 400 }
+      )
     }
 
     // Extract text content from the file
