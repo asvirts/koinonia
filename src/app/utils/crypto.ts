@@ -146,6 +146,7 @@ export const secureStorage = {
   // Helper to retrieve or generate an encryption key
   async getKey(): Promise<CryptoKey> {
     if (!isBrowser) throw new Error("Cannot use secureStorage outside browser")
+    if (!crypto) throw new Error("Web Crypto API not available")
 
     let key: CryptoKey
 
