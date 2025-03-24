@@ -43,6 +43,11 @@ function QuestionGenerator({
   const [isClient, setIsClient] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [expandedCards, setExpandedCards] = useState<string[]>([])
+  const [progress, setProgress] = useState<{
+    current: number
+    total: number
+    percentage: number
+  } | null>(null)
 
   // Set isClient to true once the component mounts
   useEffect(() => {
@@ -68,6 +73,15 @@ function QuestionGenerator({
       setIsLoading(true)
       setResult("Generating questions...")
 
+      // Show initial progress immediately
+      const verseArray = verses.split(",").map((v) => v.trim())
+      const totalChunks = Math.ceil(verseArray.length / 2) // 2 verses per chunk
+      setProgress({
+        current: 0,
+        total: totalChunks,
+        percentage: 0
+      })
+
       const response = await fetch("/api/questions", {
         method: "POST",
         headers: {
@@ -81,37 +95,84 @@ function QuestionGenerator({
         throw new Error(errorData.error || "Failed to generate questions")
       }
 
-      const data = await response.json()
-
-      if (!data.questions || !Array.isArray(data.questions)) {
-        throw new Error("Invalid response format")
+      if (!response.body) {
+        throw new Error("No response body")
       }
 
-      setData(data.questions)
-      setResult("Questions generated successfully!")
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
 
-      // Save the questions to localStorage
-      if (typeof window !== "undefined") {
-        const timestamp = Date.now()
-        const newQuestionSet: SavedQuestionSet = {
-          id: timestamp.toString(),
-          timestamp,
-          verses,
-          topic,
-          questions: data.questions
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        // Decode the chunk and add it to our buffer
+        buffer += decoder.decode(value, { stream: true })
+
+        // Process complete lines from the buffer
+        const lines = buffer.split("\n")
+        buffer = lines.pop() || "" // Keep the last incomplete line in the buffer
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+
+          try {
+            const data = JSON.parse(line)
+
+            if (data.error) {
+              throw new Error(data.error)
+            }
+
+            // Update progress if available
+            if (data.progress) {
+              setProgress(data.progress)
+            }
+
+            // Update questions
+            if (data.questions) {
+              setData(data.questions)
+            }
+
+            // If complete, we're done
+            if (data.isComplete) {
+              setResult("Questions generated successfully!")
+              setProgress(null) // Clear the progress indicator
+
+              // Save the questions to localStorage
+              if (typeof window !== "undefined") {
+                const timestamp = Date.now()
+                const newQuestionSet: SavedQuestionSet = {
+                  id: timestamp.toString(),
+                  timestamp,
+                  verses,
+                  topic,
+                  questions: data.questions
+                }
+
+                const updatedSets = [...savedQuestionSets, newQuestionSet]
+                setSavedQuestionSets(updatedSets)
+                localStorage.setItem(
+                  "savedQuestions",
+                  JSON.stringify(updatedSets)
+                )
+              }
+              return
+            }
+          } catch (error) {
+            console.error("Error parsing streaming data:", error)
+            throw new Error("Failed to parse streaming response")
+          }
         }
-
-        const updatedSets = [...savedQuestionSets, newQuestionSet]
-        setSavedQuestionSets(updatedSets)
-        localStorage.setItem("savedQuestions", JSON.stringify(updatedSets))
       }
     } catch (error) {
       setResult(
         `Error: ${
-          error instanceof Error ? error.message : "Something went wrong"
+          error instanceof Error
+            ? error.message
+            : "Failed to generate questions"
         }`
       )
-      setData([])
     } finally {
       setIsLoading(false)
     }
@@ -208,6 +269,18 @@ function QuestionGenerator({
       {!showSaved ? (
         <>
           <p className="py-4">{result}</p>
+          {progress && (
+            <div className="w-full bg-gray-200 rounded-full h-2.5 mb-12">
+              <div
+                className="bg-indigo-600 h-2.5 rounded-full transition-all duration-300"
+                style={{ width: `${progress.percentage}%` }}
+              ></div>
+              <p className="text-sm text-gray-600 mt-2">
+                Processing chunk {progress.current} of {progress.total} (
+                {progress.percentage}%)
+              </p>
+            </div>
+          )}
           {data.length > 0 ? (
             <div className="border p-4 rounded-md">
               <div className="flex justify-between items-center mb-2">

@@ -21,6 +21,11 @@ const openai = new OpenAI({
 
 interface QuestionResponse {
   questions: Array<string | { question: string }>
+  progress?: {
+    current: number
+    total: number
+    percentage: number
+  }
 }
 
 interface OpenAIErrorResponse {
@@ -346,75 +351,173 @@ export async function POST(request: NextRequest) {
     console.log(`Processing ${verseArray.length} verses in chunks`)
 
     const verseChunks = chunkArray(verseArray, 2)
+    const totalChunks = verseChunks.length
 
-    // Calculate questions per chunk (round up to ensure we get enough questions)
-    const questionsPerChunk = Math.ceil(questions / verseChunks.length)
+    // Distribute questions across chunks more evenly
+    const questionsPerChunk = Math.max(1, Math.floor(questions / totalChunks))
+    const extraQuestions = questions % totalChunks
     console.log(
-      `Processing ${verseChunks.length} chunks with ${questionsPerChunk} questions per chunk`
+      `Processing ${verseChunks.length} chunks with ${questionsPerChunk} questions per chunk (${extraQuestions} extra)`
     )
 
-    // Process each chunk
-    const allQuestions: Array<string | { question: string }> = []
-    for (const [index, chunk] of verseChunks.entries()) {
+    // Create a TransformStream for streaming the response
+    const stream = new TransformStream()
+    const writer = stream.writable.getWriter()
+    const encoder = new TextEncoder()
+
+    // Process chunks in the background
+    ;(async () => {
       try {
-        console.log(`Processing chunk ${index + 1}/${verseChunks.length}`)
-        const chunkResponse = await generateQuestionsForChunk(
-          chunk.join(", "),
-          questionsPerChunk,
-          topic
-        )
-        if (chunkResponse.questions && chunkResponse.questions.length > 0) {
-          allQuestions.push(...chunkResponse.questions)
-          console.log(
-            `Successfully generated ${
-              chunkResponse.questions.length
-            } questions for chunk ${index + 1}`
-          )
-        } else {
-          console.error(`No questions generated for chunk ${index + 1}`)
+        const allQuestions: Array<string | { question: string }> = []
+
+        for (const [index, chunk] of verseChunks.entries()) {
+          try {
+            console.log(`Processing chunk ${index + 1}/${totalChunks}`)
+            // Add an extra question to early chunks if we have extras to distribute
+            const chunkQuestions =
+              questionsPerChunk + (index < extraQuestions ? 1 : 0)
+
+            // Skip chunk if no questions allocated
+            if (chunkQuestions === 0) {
+              console.log(
+                `Skipping chunk ${index + 1} as no questions allocated`
+              )
+              continue
+            }
+
+            const chunkResponse = await generateQuestionsForChunk(
+              chunk.join(", "),
+              chunkQuestions,
+              topic
+            )
+
+            if (chunkResponse.questions && chunkResponse.questions.length > 0) {
+              allQuestions.push(...chunkResponse.questions)
+              // Trim questions to the requested amount even during streaming
+              if (allQuestions.length > questions) {
+                allQuestions.length = questions
+              }
+              console.log(
+                `Successfully generated ${
+                  chunkResponse.questions.length
+                } questions for chunk ${index + 1}, total questions: ${
+                  allQuestions.length
+                }`
+              )
+            } else {
+              console.error(`No questions generated for chunk ${index + 1}`)
+            }
+
+            // Calculate progress
+            const progress = {
+              current: index + 1,
+              total: totalChunks,
+              percentage: Math.round(((index + 1) / totalChunks) * 100)
+            }
+
+            // Send progress update
+            await writer.write(
+              encoder.encode(
+                JSON.stringify({
+                  questions: allQuestions,
+                  progress,
+                  isComplete: false
+                }) + "\n"
+              )
+            )
+
+            // If we've reached the requested number of questions, break early
+            if (allQuestions.length >= questions) {
+              console.log(
+                `Reached requested number of questions (${questions}), stopping early`
+              )
+              break
+            }
+          } catch (error) {
+            console.error(`Error processing chunk ${index + 1}:`, error)
+            // Continue with other chunks even if one fails
+            continue
+          }
         }
-      } catch (error) {
-        console.error(`Error processing chunk ${index + 1}:`, error)
-        // Continue with other chunks even if one fails
-        continue
-      }
-    }
 
-    // If we got no questions at all, try one more time with a smaller subset
-    if (allQuestions.length === 0) {
-      console.log(
-        "No questions generated from chunks, trying with a smaller subset"
-      )
-      const subsetVerses = verseArray.slice(0, 3).join(", ") // Try with just first 3 verses
-      const fullResponse = await generateQuestionsForChunk(
-        subsetVerses,
-        questions,
-        topic
-      )
-      if (fullResponse.questions && fullResponse.questions.length > 0) {
-        allQuestions.push(...fullResponse.questions)
+        // If we got no questions at all, try one more time with a smaller subset
+        if (allQuestions.length === 0) {
+          console.log(
+            "No questions generated from chunks, trying with a smaller subset"
+          )
+          const subsetVerses = verseArray.slice(0, 3).join(", ") // Try with just first 3 verses
+          const fullResponse = await generateQuestionsForChunk(
+            subsetVerses,
+            questions,
+            topic
+          )
+          if (fullResponse.questions && fullResponse.questions.length > 0) {
+            allQuestions.push(...fullResponse.questions)
+            console.log(
+              `Successfully generated ${fullResponse.questions.length} questions from subset`
+            )
+          }
+        }
+
+        // If we still have no questions, send an error
+        if (allQuestions.length === 0) {
+          console.error("Failed to generate any questions after all attempts")
+          await writer.write(
+            encoder.encode(
+              JSON.stringify({
+                error: "Failed to generate any questions. Please try again."
+              }) + "\n"
+            )
+          )
+          await writer.close()
+          return
+        }
+
+        // Take only the requested number of questions
+        const finalQuestions = allQuestions.slice(0, questions)
         console.log(
-          `Successfully generated ${fullResponse.questions.length} questions from subset`
+          `Successfully generated ${finalQuestions.length} questions total`
         )
+
+        // Send final response with 100% progress
+        await writer.write(
+          encoder.encode(
+            JSON.stringify({
+              questions: finalQuestions,
+              progress: {
+                current: totalChunks,
+                total: totalChunks,
+                percentage: 100
+              },
+              isComplete: true
+            }) + "\n"
+          )
+        )
+        await writer.close()
+      } catch (error) {
+        console.error("Error in streaming process:", error)
+        await writer.write(
+          encoder.encode(
+            JSON.stringify({
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "An unexpected error occurred"
+            }) + "\n"
+          )
+        )
+        await writer.close()
       }
-    }
+    })()
 
-    // If we still have no questions, return an error
-    if (allQuestions.length === 0) {
-      console.error("Failed to generate any questions after all attempts")
-      return NextResponse.json(
-        { error: "Failed to generate any questions. Please try again." },
-        { status: 500 }
-      )
-    }
-
-    // Take only the requested number of questions
-    const finalQuestions = allQuestions.slice(0, questions)
-    console.log(
-      `Successfully generated ${finalQuestions.length} questions total`
-    )
-
-    return NextResponse.json({ questions: finalQuestions })
+    // Return the readable stream
+    return new Response(stream.readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive"
+      }
+    })
   } catch (error) {
     console.error("Error generating questions:", error)
     return NextResponse.json(

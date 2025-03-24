@@ -300,7 +300,15 @@ export default function SermonOutlineUpload({
                 .map((analysis) => (
                   <div key={analysis.id} className="border p-4 rounded-md">
                     <div className="flex justify-between items-center mb-2">
-                      <h3 className="font-medium">{analysis.fileTitle}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium">{analysis.fileTitle}</h3>
+                        <button
+                          onClick={() => handleUseAnalysis(analysis)}
+                          className="bg-indigo-600 text-white hover:bg-indigo-700 hover:cursor-pointer px-3 py-1 rounded text-sm"
+                        >
+                          Use This Analysis
+                        </button>
+                      </div>
                       <span className="text-sm text-gray-500">
                         {formatDate(analysis.timestamp)}
                       </span>
@@ -317,12 +325,6 @@ export default function SermonOutlineUpload({
                         ))}
                       </ul>
                     </div>
-                    <button
-                      onClick={() => handleUseAnalysis(analysis)}
-                      className="bg-indigo-600 text-white hover:bg-indigo-700 hover:cursor-pointer px-4 py-2 rounded"
-                    >
-                      Use This Analysis
-                    </button>
                   </div>
                 ))}
             </div>
