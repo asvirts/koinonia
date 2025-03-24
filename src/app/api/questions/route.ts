@@ -51,6 +51,10 @@ async function generateQuestionsForChunk(
   const sanitizedTopic = topic ? sanitizeInput(topic) : ""
 
   try {
+    console.log("Attempting to generate questions for verses:", sanitizedVerses)
+    console.log("Using topic:", sanitizedTopic)
+    console.log("Number of questions requested:", questions)
+
     const completion = await openai.chat.completions.create({
       model: "o1-mini",
       messages: [
@@ -67,7 +71,8 @@ Create ${questions} discussion questions for ${sanitizedVerses}${
           }`
         }
       ],
-      max_tokens: 2000
+      max_tokens: 2000,
+      temperature: 0.7
     })
 
     const textContent = completion.choices[0]?.message?.content
@@ -78,6 +83,8 @@ Create ${questions} discussion questions for ${sanitizedVerses}${
       )
       return { questions: [] }
     }
+
+    console.log("Received response from OpenAI:", textContent)
 
     let cleanedContent = textContent.trim()
     if (cleanedContent.startsWith("```")) {
@@ -91,12 +98,16 @@ Create ${questions} discussion questions for ${sanitizedVerses}${
       cleanedContent = jsonMatch[0]
     }
 
+    console.log("Cleaned content:", cleanedContent)
+
     try {
       const response = JSON.parse(cleanedContent) as QuestionResponse
       if (!response.questions || !Array.isArray(response.questions)) {
         console.error("Invalid response format for verses:", sanitizedVerses)
+        console.error("Response:", response)
         return { questions: [] }
       }
+      console.log("Successfully parsed questions:", response.questions)
       return response
     } catch (parseError) {
       console.error(
@@ -104,6 +115,7 @@ Create ${questions} discussion questions for ${sanitizedVerses}${
         sanitizedVerses,
         parseError
       )
+      console.error("Raw content that failed to parse:", cleanedContent)
       return { questions: [] }
     }
   } catch (error) {
@@ -112,6 +124,10 @@ Create ${questions} discussion questions for ${sanitizedVerses}${
       sanitizedVerses,
       error
     )
+    if (error instanceof Error) {
+      console.error("Error details:", error.message)
+      console.error("Error stack:", error.stack)
+    }
     return { questions: [] }
   }
 }
