@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
 Create ${questions} discussion questions for ${verses}${
             topic ? ` on the topic of ${topic}` : ""
-          }. Questions should be substantial but concise, helping adults understand and apply the passage in a one-hour discussion. Format: {"questions": ["question 1", "question 2", ...]}${
+          }. Questions should be substantial but concise, helping adults understand and apply the passage in a one-hour discussion. Try to create questions that are not too obvious, not too similar to each other, that are not too easy to answer. Aim to create at least one question per Bible verse if possible. If there are more verses than the totla number of questions the used asked for, see if you can combine some verses into a single question so all of the verses are included in the discussion guide. Format: {"questions": ["question 1", "question 2", ...]}${
             topic
               ? " Organize thematically."
               : " Follow chapter chronologically."
