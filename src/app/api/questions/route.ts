@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 // Rate limiting - simple in-memory store
 // In production, use a proper rate limiting solution with Redis
 const RATE_LIMIT_DURATION = 60 * 1000 // 1 minute in milliseconds
-const MAX_REQUESTS = 5 // 5 requests per minute
+const MAX_REQUESTS = 20 // 20 requests per minute (increased from 5)
 
 interface RateLimitEntry {
   count: number
@@ -30,6 +30,68 @@ function sanitizeInput(input: string): string {
     .replace(/[^\w\s.,;:'"?!()-]/g, "")
     .trim()
     .substring(0, 1000)
+}
+
+// Helper function to chunk array into smaller pieces
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size))
+  }
+  return chunks
+}
+
+// Helper function to generate questions for a chunk of verses
+async function generateQuestionsForChunk(
+  verses: string,
+  questions: number,
+  topic?: string
+): Promise<QuestionResponse> {
+  const sanitizedVerses = sanitizeInput(verses)
+  const sanitizedTopic = topic ? sanitizeInput(topic) : ""
+
+  const completion = await openai.chat.completions.create({
+    model: "o1-mini",
+    messages: [
+      {
+        role: "user",
+        content: `You are a Christian Biblical scholar creating small group discussion guides. Return only valid JSON with a 'questions' array.
+
+Create ${questions} discussion questions for ${sanitizedVerses}${
+          sanitizedTopic ? ` on the topic of ${sanitizedTopic}` : ""
+        }. Questions should be substantial but concise, helping adults understand and apply the passage in a one-hour discussion. Try to create questions that are not too obvious, not too similar to each other, that are not too easy to answer. Aim to create at least one question per Bible verse if possible. If there are more verses than the total number of questions the user asked for, see if you can combine some verses into a single question so all of the verses are included in the discussion guide, but don't force it if it doesn't make sense. Format: {"questions": ["question 1", "question 2", ...]}${
+          sanitizedTopic
+            ? " Organize thematically."
+            : " Follow chapter chronologically."
+        }`
+      }
+    ],
+    max_tokens: 2000
+  })
+
+  const textContent = completion.choices[0]?.message?.content
+  if (!textContent) {
+    throw new Error("No content received from OpenAI")
+  }
+
+  let cleanedContent = textContent.trim()
+  if (cleanedContent.startsWith("```")) {
+    cleanedContent = cleanedContent
+      .replace(/^```(?:json)?/, "")
+      .replace(/```$/, "")
+      .trim()
+  }
+  const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/)
+  if (jsonMatch) {
+    cleanedContent = jsonMatch[0]
+  }
+
+  const response = JSON.parse(cleanedContent) as QuestionResponse
+  if (!response.questions || !Array.isArray(response.questions)) {
+    throw new Error("Invalid response format")
+  }
+
+  return response
 }
 
 export async function POST(request: NextRequest) {
@@ -98,88 +160,44 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Sanitize inputs
-    const sanitizedVerses = sanitizeInput(verses)
-    const sanitizedTopic = topic ? sanitizeInput(topic) : ""
+    // Split verses into chunks of 5
+    const verseArray = verses.split(",").map((v) => v.trim())
+    const verseChunks = chunkArray(verseArray, 5)
 
-    const completion = await openai.chat.completions
-      .create({
-        model: "o1-mini",
-        messages: [
-          {
-            role: "user",
-            content: `You are a Christian Biblical scholar creating small group discussion guides. Return only valid JSON with a 'questions' array.
+    // Calculate questions per chunk (round up to ensure we get enough questions)
+    const questionsPerChunk = Math.ceil(questions / verseChunks.length)
 
-Create ${questions} discussion questions for ${sanitizedVerses}${
-              sanitizedTopic ? ` on the topic of ${sanitizedTopic}` : ""
-            }. Questions should be substantial but concise, helping adults understand and apply the passage in a one-hour discussion. Try to create questions that are not too obvious, not too similar to each other, that are not too easy to answer. Aim to create at least one question per Bible verse if possible. If there are more verses than the total number of questions the user asked for, see if you can combine some verses into a single question so all of the verses are included in the discussion guide, but don't force it if it doesn't make sense. Format: {"questions": ["question 1", "question 2", ...]}${
-              sanitizedTopic
-                ? " Organize thematically."
-                : " Follow chapter chronologically."
-            }`
-          }
-        ],
-        max_tokens: 2000
-      })
-      .catch((error) => {
-        console.error("OpenAI API error:", error)
-        throw new Error("Failed to generate questions. Please try again later.")
-      })
+    // Process each chunk
+    const allQuestions: Array<string | { question: string }> = []
+    for (const chunk of verseChunks) {
+      try {
+        const chunkResponse = await generateQuestionsForChunk(
+          chunk.join(", "),
+          questionsPerChunk,
+          topic
+        )
+        allQuestions.push(...chunkResponse.questions)
+      } catch (error) {
+        console.error("Error processing chunk:", error)
+        // Continue with other chunks even if one fails
+        continue
+      }
+    }
 
-    // Get the content from the response
-    const textContent = completion.choices[0]?.message?.content
-    if (!textContent) {
+    // If we got no questions at all, return an error
+    if (allQuestions.length === 0) {
       return NextResponse.json(
-        { error: "No content received from OpenAI" },
+        { error: "Failed to generate any questions. Please try again." },
         { status: 500 }
       )
     }
 
-    // Clean the response to ensure it's valid JSON
-    let cleanedContent = textContent.trim()
-    // If response starts with ``` or ends with ```, remove those markers (common in markdown code blocks)
-    if (cleanedContent.startsWith("```")) {
-      cleanedContent = cleanedContent
-        .replace(/^```(?:json)?/, "")
-        .replace(/```$/, "")
-        .trim()
-    }
-    // If the response has any text before or after the JSON object, try to extract just the JSON part
-    const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/)
-    if (jsonMatch) {
-      cleanedContent = jsonMatch[0]
-    }
+    // Take only the requested number of questions
+    const finalQuestions = allQuestions.slice(0, questions)
 
-    let response: QuestionResponse
-    try {
-      response = JSON.parse(cleanedContent) as QuestionResponse
-    } catch (parseError) {
-      console.error("JSON parsing error:", parseError)
-      console.error("Raw content:", textContent)
-      console.error("Cleaned content:", cleanedContent)
-      return NextResponse.json(
-        {
-          error: "Failed to generate valid questions. Please try again.",
-          details: "Response format error"
-        },
-        { status: 500 }
-      )
-    }
-
-    if (!response.questions || !Array.isArray(response.questions)) {
-      return NextResponse.json(
-        {
-          error: "Invalid question format received",
-          details: "Response structure error"
-        },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({ questions: response.questions })
+    return NextResponse.json({ questions: finalQuestions })
   } catch (error) {
     console.error("Error generating questions:", error)
-    // Ensure we always return valid JSON
     return NextResponse.json(
       {
         error:
