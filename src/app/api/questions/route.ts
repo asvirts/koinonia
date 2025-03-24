@@ -102,23 +102,29 @@ export async function POST(request: NextRequest) {
     const sanitizedVerses = sanitizeInput(verses)
     const sanitizedTopic = topic ? sanitizeInput(topic) : ""
 
-    const completion = await openai.chat.completions.create({
-      model: "o1-mini",
-      messages: [
-        {
-          role: "user",
-          content: `You are a Christian Biblical scholar creating small group discussion guides. Return only valid JSON with a 'questions' array.
+    const completion = await openai.chat.completions
+      .create({
+        model: "o1-mini",
+        messages: [
+          {
+            role: "user",
+            content: `You are a Christian Biblical scholar creating small group discussion guides. Return only valid JSON with a 'questions' array.
 
 Create ${questions} discussion questions for ${sanitizedVerses}${
-            sanitizedTopic ? ` on the topic of ${sanitizedTopic}` : ""
-          }. Questions should be substantial but concise, helping adults understand and apply the passage in a one-hour discussion. Try to create questions that are not too obvious, not too similar to each other, that are not too easy to answer. Aim to create at least one question per Bible verse if possible. If there are more verses than the total number of questions the user asked for, see if you can combine some verses into a single question so all of the verses are included in the discussion guide, but don't force it if it doesn't make sense. Format: {"questions": ["question 1", "question 2", ...]}${
-            sanitizedTopic
-              ? " Organize thematically."
-              : " Follow chapter chronologically."
-          }`
-        }
-      ]
-    })
+              sanitizedTopic ? ` on the topic of ${sanitizedTopic}` : ""
+            }. Questions should be substantial but concise, helping adults understand and apply the passage in a one-hour discussion. Try to create questions that are not too obvious, not too similar to each other, that are not too easy to answer. Aim to create at least one question per Bible verse if possible. If there are more verses than the total number of questions the user asked for, see if you can combine some verses into a single question so all of the verses are included in the discussion guide, but don't force it if it doesn't make sense. Format: {"questions": ["question 1", "question 2", ...]}${
+              sanitizedTopic
+                ? " Organize thematically."
+                : " Follow chapter chronologically."
+            }`
+          }
+        ],
+        max_tokens: 2000
+      })
+      .catch((error) => {
+        console.error("OpenAI API error:", error)
+        throw new Error("Failed to generate questions. Please try again later.")
+      })
 
     // Get the content from the response
     const textContent = completion.choices[0]?.message?.content
@@ -152,14 +158,20 @@ Create ${questions} discussion questions for ${sanitizedVerses}${
       console.error("Raw content:", textContent)
       console.error("Cleaned content:", cleanedContent)
       return NextResponse.json(
-        { error: "Failed to parse OpenAI response as JSON" },
+        {
+          error: "Failed to generate valid questions. Please try again.",
+          details: "Response format error"
+        },
         { status: 500 }
       )
     }
 
     if (!response.questions || !Array.isArray(response.questions)) {
       return NextResponse.json(
-        { error: "Invalid response format" },
+        {
+          error: "Invalid question format received",
+          details: "Response structure error"
+        },
         { status: 500 }
       )
     }
@@ -167,9 +179,14 @@ Create ${questions} discussion questions for ${sanitizedVerses}${
     return NextResponse.json({ questions: response.questions })
   } catch (error) {
     console.error("Error generating questions:", error)
+    // Ensure we always return valid JSON
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Something went wrong"
+        error:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred",
+        details: error instanceof Error ? error.stack : undefined
       },
       { status: 500 }
     )
