@@ -55,25 +55,46 @@ async function generateQuestionsForChunk(
     console.log("Using topic:", sanitizedTopic)
     console.log("Number of questions requested:", questions)
 
-    const completion = await openai.chat.completions.create({
-      model: "o1-mini",
-      messages: [
-        {
-          role: "user",
-          content: `You are a Christian Biblical scholar creating small group discussion guides. Return only valid JSON with a 'questions' array.
+    // Check if API key is present
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("OpenAI API key is not configured")
+      throw new Error("OpenAI API key is not configured")
+    }
+
+    const completion = await openai.chat.completions
+      .create({
+        model: "o1-mini",
+        messages: [
+          {
+            role: "user",
+            content: `You are a Christian Biblical scholar creating small group discussion guides. Return only valid JSON with a 'questions' array.
 
 Create ${questions} discussion questions for ${sanitizedVerses}${
-            sanitizedTopic ? ` on the topic of ${sanitizedTopic}` : ""
-          }. Questions should be substantial but concise, helping adults understand and apply the passage in a one-hour discussion. Try to create questions that are not too obvious, not too similar to each other, that are not too easy to answer. Aim to create at least one question per Bible verse if possible. If there are more verses than the total number of questions the user asked for, see if you can combine some verses into a single question so all of the verses are included in the discussion guide, but don't force it if it doesn't make sense. Format: {"questions": ["question 1", "question 2", ...]}${
-            sanitizedTopic
-              ? " Organize thematically."
-              : " Follow chapter chronologically."
-          }`
+              sanitizedTopic ? ` on the topic of ${sanitizedTopic}` : ""
+            }. Questions should be substantial but concise, helping adults understand and apply the passage in a one-hour discussion. Try to create questions that are not too obvious, not too similar to each other, that are not too easy to answer. Aim to create at least one question per Bible verse if possible. If there are more verses than the total number of questions the user asked for, see if you can combine some verses into a single question so all of the verses are included in the discussion guide, but don't force it if it doesn't make sense. Format: {"questions": ["question 1", "question 2", ...]}${
+              sanitizedTopic
+                ? " Organize thematically."
+                : " Follow chapter chronologically."
+            }`
+          }
+        ],
+        max_tokens: 2000,
+        temperature: 0.7
+      })
+      .catch((error) => {
+        console.error("OpenAI API error:", error)
+        if (error.response) {
+          console.error("OpenAI API error response:", error.response.data)
+          // Log the specific error message from OpenAI
+          if (error.response.data?.error?.message) {
+            console.error(
+              "OpenAI error message:",
+              error.response.data.error.message
+            )
+          }
         }
-      ],
-      max_tokens: 2000,
-      temperature: 0.7
-    })
+        throw error
+      })
 
     const textContent = completion.choices[0]?.message?.content
     if (!textContent) {
@@ -127,6 +148,9 @@ Create ${questions} discussion questions for ${sanitizedVerses}${
     if (error instanceof Error) {
       console.error("Error details:", error.message)
       console.error("Error stack:", error.stack)
+      if ("response" in error) {
+        console.error("API Error response:", (error as any).response?.data)
+      }
     }
     return { questions: [] }
   }
