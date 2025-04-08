@@ -58,6 +58,28 @@ function chunkArray<T>(array: T[], size: number): T[][] {
   return chunks
 }
 
+// Helper function to extract valid JSON from potentially messy LLM output
+function extractValidJSON(text: string): string {
+  // First, try to clean markdown code blocks
+  let cleanedText = text.trim()
+
+  // Remove markdown code blocks if present
+  if (cleanedText.startsWith("```") && cleanedText.endsWith("```")) {
+    cleanedText = cleanedText
+      .replace(/^```(?:json)?/, "")
+      .replace(/```$/, "")
+      .trim()
+  }
+
+  // Try to find a valid JSON object using regex
+  const jsonMatch = cleanedText.match(/(\{[\s\S]*\})/)
+  if (jsonMatch && jsonMatch[1]) {
+    return jsonMatch[1]
+  }
+
+  return cleanedText
+}
+
 // Helper function to generate questions for a chunk of verses
 async function generateQuestionsForChunk(
   verses: string,
@@ -86,13 +108,17 @@ async function generateQuestionsForChunk(
 
     const completion = await openai.chat.completions
       .create({
-        model: "o1-mini",
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
         messages: [
           {
+            role: "system",
+            content:
+              "You are a JSON-only API that returns only valid JSON objects with no text before or after. All responses must be valid JSON."
+          },
+          {
             role: "user",
-            content: `You are a JSON-only response API. You must ONLY return valid JSON objects with no additional text, markdown formatting, or explanations. The response must be parseable by JSON.parse(). Never include any text before or after the JSON object.
-
-Return a JSON object with exactly this structure: {"questions": ["question1", "question2", ...]}
+            content: `Return a JSON object with exactly this structure: {"questions": ["question1", "question2", ...]}
 
 Create ${questions} discussion questions for these Bible verses: ${sanitizedVerses}${
               sanitizedTopic ? ` on the topic of ${sanitizedTopic}` : ""
@@ -100,13 +126,11 @@ Create ${questions} discussion questions for these Bible verses: ${sanitizedVers
               sanitizedTopic
                 ? " Organize thematically."
                 : " Follow chapter chronologically."
-            }
-
-CRITICAL: Return ONLY the JSON object. Do not include any text before or after the JSON object. Do not use markdown formatting. The response must be a valid JSON object that can be parsed by JSON.parse().`
+            }`
           }
         ]
       })
-      .catch((error) => {
+      .catch((error: any) => {
         console.error("OpenAI API error details:", {
           name: error.name,
           message: error.message,
@@ -200,18 +224,8 @@ CRITICAL: Return ONLY the JSON object. Do not include any text before or after t
 
     console.log("Received response from OpenAI:", textContent)
 
-    let cleanedContent = textContent.trim()
-    if (cleanedContent.startsWith("```")) {
-      cleanedContent = cleanedContent
-        .replace(/^```(?:json)?/, "")
-        .replace(/```$/, "")
-        .trim()
-    }
-    const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/)
-    if (jsonMatch) {
-      cleanedContent = jsonMatch[0]
-    }
-
+    // Use the improved JSON extraction function
+    const cleanedContent = extractValidJSON(textContent)
     console.log("Cleaned content:", cleanedContent)
 
     try {
@@ -219,6 +233,37 @@ CRITICAL: Return ONLY the JSON object. Do not include any text before or after t
       if (!response.questions || !Array.isArray(response.questions)) {
         console.error("Invalid response format for verses:", sanitizedVerses)
         console.error("Response:", response)
+
+        // If the response contains any questions but in the wrong format, attempt to fix
+        if (response && typeof response === "object") {
+          const questionsArray: string[] = []
+
+          // Try to extract questions from various possible formats
+          Object.entries(response).forEach(([key, value]) => {
+            if (Array.isArray(value)) {
+              questionsArray.push(
+                ...value.map((q) =>
+                  typeof q === "string"
+                    ? q
+                    : typeof q === "object" && q !== null && "question" in q
+                    ? (q as any).question
+                    : ""
+                )
+              )
+            } else if (key.includes("question") && typeof value === "string") {
+              questionsArray.push(value)
+            }
+          })
+
+          if (questionsArray.length > 0) {
+            console.log(
+              "Fixed malformed response, extracted questions:",
+              questionsArray
+            )
+            return { questions: questionsArray.filter((q) => q.trim() !== "") }
+          }
+        }
+
         if (retryCount < 2) {
           console.log(
             `Retrying chunk due to invalid format (attempt ${
@@ -234,8 +279,14 @@ CRITICAL: Return ONLY the JSON object. Do not include any text before or after t
         }
         return { questions: [] }
       }
-      console.log("Successfully parsed questions:", response.questions)
-      return response
+
+      // Ensure all questions are strings (not objects)
+      const processedQuestions = response.questions.map((q) =>
+        typeof q === "string" ? q : q.question
+      )
+
+      console.log("Successfully parsed questions:", processedQuestions)
+      return { questions: processedQuestions }
     } catch (parseError) {
       console.error(
         "Error parsing OpenAI response for verses:",
@@ -368,7 +419,7 @@ export async function POST(request: NextRequest) {
     // Process chunks in the background
     ;(async () => {
       try {
-        const allQuestions: Array<string | { question: string }> = []
+        const allQuestions: Array<string> = []
 
         for (const [index, chunk] of verseChunks.entries()) {
           try {
@@ -392,7 +443,19 @@ export async function POST(request: NextRequest) {
             )
 
             if (chunkResponse.questions && chunkResponse.questions.length > 0) {
-              allQuestions.push(...chunkResponse.questions)
+              // Ensure we're only pushing string values to allQuestions
+              chunkResponse.questions.forEach((q) => {
+                if (typeof q === "string") {
+                  allQuestions.push(q)
+                } else if (
+                  typeof q === "object" &&
+                  q !== null &&
+                  "question" in q
+                ) {
+                  allQuestions.push(q.question)
+                }
+              })
+
               // Trim questions to the requested amount even during streaming
               if (allQuestions.length > questions) {
                 allQuestions.length = questions
@@ -452,7 +515,19 @@ export async function POST(request: NextRequest) {
             topic
           )
           if (fullResponse.questions && fullResponse.questions.length > 0) {
-            allQuestions.push(...fullResponse.questions)
+            // Handle potential object types here too
+            fullResponse.questions.forEach((q) => {
+              if (typeof q === "string") {
+                allQuestions.push(q)
+              } else if (
+                typeof q === "object" &&
+                q !== null &&
+                "question" in q
+              ) {
+                allQuestions.push(q.question)
+              }
+            })
+
             console.log(
               `Successfully generated ${fullResponse.questions.length} questions from subset`
             )
